@@ -291,10 +291,10 @@ const overlay = () => document.getElementById('transition-overlay');
 async function init() {
   try {
     nv = new Niivue({
-      loadingText: '',
+      loadingText: " ",
       backColor: [0.039, 0.039, 0.059, 1],
       show3Dcrosshair: false,
-      isColorbar: true,
+      isColorbar: false,
       isRadiologicalConvention: false,
       logging: false,
       isHighResolutionCapable: true,
@@ -302,7 +302,6 @@ async function init() {
       isAntiAlias: true,
       isForceMouseClickToVoxelCenters: false,
       dragMode: 5, // 5 = slicer3D (3D drag to rotate)
-      isCornerOrientationText: true
     });
 
     // await nv.attachToCanvas(document.getElementById('gl1'));
