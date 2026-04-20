@@ -144,7 +144,7 @@ body{
 <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
 
 <div class="header">
-  <h1>Pulmonary Vasculature Pipeline</h1>
+  <h1>Pulmonary Vascular Tree Pipeline</h1>
   <div class="subtitle">Step-by-Step 3D Reconstruction &nbsp;·&nbsp; SITEE 2026</div>
   <div class="accent-line"></div>
 </div>
@@ -235,16 +235,16 @@ function radiusToColor(radius, rMin, rMax) {
 const STAGES = [
   {
     id: 'lung_mask', title: 'Lung Segmentation',
-    subtitle: 'Eroded lung mask — pleural wall excluded. Visualisation done with NiiVue.',
+    subtitle: 'Eroded lung mask - pleural wall excluded. Visualisation done with NiiVue.',
     volumes: [{ url: 's01_lung_mask_eroded.nii.gz', colormap: 'blue', opacity: 1.0, cal_min: 0.5, cal_max: 1 }],
   },
   {
-    id: 'frangi', title: 'Vesselness — Frangi',
+    id: 'frangi', title: 'Vesselness - Frangi',
     subtitle: 'Vessel probability map calculated with Hessian-Based Frangi algorithm. Visualisation done with NiiVue.',
     volumes: [{ url: 's03_map_frangi.nii.gz', colormap: 'hot', opacity: 1.0, cal_min: 0.01, cal_max: 1 }],
   },
   {
-    id: 'sato', title: 'Vesselness — Sato',
+    id: 'sato', title: 'Vesselness - Sato',
     subtitle: 'Vessel probability map calculated with Hessian-Based Sato algorithm. Visualisation done with NiiVue.',
     volumes: [{ url: 's03_map_sato.nii.gz', colormap: 'hot', opacity: 1.0, cal_min: 0.05, cal_max: 1 }],
   },
@@ -291,9 +291,10 @@ const overlay = () => document.getElementById('transition-overlay');
 async function init() {
   try {
     nv = new Niivue({
+      loadingText: '',
       backColor: [0.039, 0.039, 0.059, 1],
       show3Dcrosshair: false,
-      isColorbar: false,
+      isColorbar: true,
       isRadiologicalConvention: false,
       logging: false,
       isHighResolutionCapable: true,
@@ -301,6 +302,7 @@ async function init() {
       isAntiAlias: true,
       isForceMouseClickToVoxelCenters: false,
       dragMode: 5, // 5 = slicer3D (3D drag to rotate)
+      isCornerOrientationText: true
     });
 
     // await nv.attachToCanvas(document.getElementById('gl1'));
@@ -474,7 +476,7 @@ function initThreeJS() {
   threeControls.enableDamping = true;
   threeControls.dampingFactor = 0.08;
   threeControls.autoRotate = true;
-  threeControls.autoRotateSpeed = 1.0;
+  threeControls.autoRotateSpeed = -1.0;
   threeControls.minDistance = 30;
   threeControls.maxDistance = 800;
 
