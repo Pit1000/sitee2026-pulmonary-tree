@@ -235,27 +235,27 @@ function radiusToColor(radius, rMin, rMax) {
 const STAGES = [
   {
     id: 'lung_mask', title: 'Lung Segmentation',
-    subtitle: 'Eroded lung mask — pleural wall excluded. This Visualisation done with NiiVue.',
+    subtitle: 'Eroded lung mask — pleural wall excluded. Visualisation done with NiiVue.',
     volumes: [{ url: 's01_lung_mask_eroded.nii.gz', colormap: 'blue', opacity: 1.0, cal_min: 0.5, cal_max: 1 }],
   },
   {
     id: 'frangi', title: 'Vesselness — Frangi',
-    subtitle: 'Vessel probability map calculated with Hessian-Based Frangi algorithm. This Visualisation done with NiiVue.',
+    subtitle: 'Vessel probability map calculated with Hessian-Based Frangi algorithm. Visualisation done with NiiVue.',
     volumes: [{ url: 's03_map_frangi.nii.gz', colormap: 'hot', opacity: 1.0, cal_min: 0.01, cal_max: 1 }],
   },
   {
     id: 'sato', title: 'Vesselness — Sato',
-    subtitle: 'Vessel probability map calculated with Hessian-Based Sato algorithm. This Visualisation done with NiiVue.',
+    subtitle: 'Vessel probability map calculated with Hessian-Based Sato algorithm. Visualisation done with NiiVue.',
     volumes: [{ url: 's03_map_sato.nii.gz', colormap: 'hot', opacity: 1.0, cal_min: 0.05, cal_max: 1 }],
   },
   {
     id: 'fused', title: 'Fused Vesselness',
-    subtitle: 'Frangi + Sato weighted fusion final vessel probability map. This Visualisation done with NiiVue.',
+    subtitle: 'Frangi + Sato weighted fusion final vessel probability map. Visualisation done with NiiVue.',
     volumes: [{ url: 's03_vesselness_fused.nii.gz', colormap: 'hot', opacity: 1.0, cal_min: 0.05, cal_max: 1 }],
   },
   {
     id: 'graph', title: 'Vascular Graph',
-    subtitle: 'Skeletonization done with TEASAR by Kimimaro, resulting graph was constructed using NetworkX. This Visualisation done with Three.js',
+    subtitle: 'Skeletonization done with TEASAR by Kimimaro, resulting graph was constructed using NetworkX. Visualisation done with Three.js',
     useThreeJS: true,
   },
 ];
