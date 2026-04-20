@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pulmonary Vasculature — Pipeline Viewer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=JetBrains+Mono:wght@300;400&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box}
+
+:root{
+  --bg:#0a0a0f;
+  --vessel-red:#e8453c;
+  --accent:#ff6b5e;
+  --text:#c8c4bf;
+  --text-dim:#5a5652;
+  --panel-bg:rgba(12,12,18,0.88);
+  --border:rgba(232,69,60,0.15);
+  --glow:rgba(232,69,60,0.25);
+}
+
+body{
+  background:var(--bg);color:var(--text);
+  font-family:'Cormorant Garamond',Georgia,serif;
+  overflow:hidden;height:100vh;width:100vw;
+  -webkit-user-select:none;user-select:none;
+}
+
+#gl1{position:fixed;inset:0;z-index:0;width:100vw;height:100vh;display:block}
+#graph-canvas{position:fixed;inset:0;z-index:1;width:100vw;height:100vh;display:none}
+
+/* Transition overlay — covers NiiVue's own loading text */
+#transition-overlay{
+  position:fixed;inset:0;z-index:2;
+  background:var(--bg);
+  opacity:1;
+  transition:opacity 0.6s ease;
+  pointer-events:none;
+  display:flex;align-items:center;justify-content:center;
+}
+#transition-overlay.transparent{opacity:0}
+#transition-overlay .stage-title{
+  font-size:clamp(1.2rem,4.5vw,2rem);font-weight:300;
+  letter-spacing:0.08em;color:#e0dcd7;text-align:center;
+}
+#transition-overlay .stage-num{
+  font-family:'JetBrains Mono',monospace;font-size:0.55rem;
+  letter-spacing:0.2em;color:var(--text-dim);text-transform:uppercase;
+  margin-bottom:6px;
+}
+
+.header{
+  position:fixed;top:0;left:0;right:0;z-index:10;
+  padding:12px 16px 10px;
+  background:linear-gradient(to bottom,rgba(10,10,15,0.95) 0%,rgba(10,10,15,0.6) 60%,transparent 100%);
+  pointer-events:none;
+}
+.header h1{font-size:clamp(0.85rem,3vw,1.4rem);font-weight:300;letter-spacing:0.1em;text-transform:uppercase;color:#e0dcd7;margin-bottom:2px}
+.header .subtitle{font-family:'JetBrains Mono',monospace;font-size:clamp(0.45rem,1.3vw,0.62rem);font-weight:300;letter-spacing:0.04em;color:var(--text-dim)}
+.header .accent-line{width:40px;height:1.5px;background:linear-gradient(90deg,var(--vessel-red),transparent);margin-top:8px}
+
+.timeline{position:fixed;z-index:10;pointer-events:all}
+@media(min-width:641px){
+  .timeline{top:50%;left:20px;transform:translateY(-50%);display:flex;flex-direction:column;gap:0}
+  .timeline-item{display:flex;align-items:center;gap:12px;padding:10px 14px 10px 0;cursor:pointer;transition:all 0.4s ease;position:relative;-webkit-tap-highlight-color:transparent}
+  .timeline-line{position:absolute;left:5px;top:22px;bottom:-10px;width:2px;background:rgba(255,255,255,0.06);z-index:1}
+  .timeline-item:last-child .timeline-line{display:none}
+  .timeline-label{font-family:'JetBrains Mono',monospace;font-size:0.6rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-dim);transition:all 0.4s ease;white-space:nowrap}
+  .timeline-item:hover .timeline-label{color:var(--text)}
+  .timeline-item:hover .timeline-dot{border-color:var(--text)}
+}
+@media(max-width:640px){
+  .timeline{bottom:68px;left:50%;transform:translateX(-50%);display:flex;flex-direction:row;gap:14px;align-items:center}
+  .timeline-item{padding:8px;cursor:pointer;-webkit-tap-highlight-color:transparent;position:relative}
+  .timeline-line{display:none}.timeline-label{display:none}
+}
+.timeline-dot{width:12px;height:12px;border-radius:50%;border:2px solid var(--text-dim);background:transparent;transition:all 0.4s ease;flex-shrink:0;position:relative;z-index:2}
+.timeline-item.active .timeline-dot{border-color:var(--vessel-red);background:var(--vessel-red);box-shadow:0 0 12px var(--glow)}
+.timeline-item.active .timeline-label{color:var(--accent);font-weight:400}
+.timeline-item.visited .timeline-dot{border-color:rgba(232,69,60,0.5);background:rgba(232,69,60,0.3)}
+
+.info-panel{position:fixed;z-index:10;background:var(--panel-bg);border:1px solid var(--border);border-radius:4px;padding:12px 16px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:opacity 0.4s ease,transform 0.4s ease}
+@media(min-width:641px){.info-panel{bottom:20px;right:20px;min-width:280px;max-width:340px}}
+@media(max-width:640px){.info-panel{bottom:100px;left:12px;right:12px;max-width:none;transform:translateY(0)}.info-panel.collapsed{transform:translateY(calc(100% - 36px))}}
+.info-panel h3{font-size:1rem;font-weight:400;color:#e0dcd7;margin-bottom:2px}
+.info-panel .info-subtitle{font-family:'JetBrains Mono',monospace;font-size:0.52rem;letter-spacing:0.04em;color:var(--text-dim);margin-bottom:8px}
+.info-toggle{display:none;position:absolute;top:8px;right:10px;font-family:'JetBrains Mono',monospace;font-size:0.55rem;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:4px 8px}
+@media(max-width:640px){.info-toggle{display:block}}
+.stat-row{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.stat-row:last-child{border-bottom:none}
+.stat-label{font-family:'JetBrains Mono',monospace;font-size:0.5rem;font-weight:300;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-dim)}
+.stat-value{font-family:'Cormorant Garamond',serif;font-size:0.85rem;font-weight:400;color:var(--text)}
+.stat-value.hl{color:var(--accent)}
+
+.controls{position:fixed;bottom:0;left:0;right:0;z-index:10;display:flex;gap:6px;align-items:center;justify-content:center;padding:10px 8px;background:linear-gradient(to top,rgba(10,10,15,0.92) 0%,rgba(10,10,15,0.5) 70%,transparent 100%)}
+.ctrl-btn{font-family:'JetBrains Mono',monospace;font-size:0.5rem;letter-spacing:0.04em;text-transform:uppercase;background:var(--panel-bg);border:1px solid var(--border);color:var(--text-dim);padding:10px 12px;border-radius:3px;cursor:pointer;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);transition:all 0.3s ease;-webkit-tap-highlight-color:transparent;min-height:44px;min-width:44px;display:flex;align-items:center;justify-content:center}
+.ctrl-btn:hover{border-color:var(--vessel-red);color:var(--text)}
+.ctrl-btn.active{background:rgba(232,69,60,0.15);border-color:var(--vessel-red);color:var(--accent)}
+.ctrl-btn.nav{padding:10px 16px;font-size:0.65rem}
+.ctrl-btn.nav:disabled{opacity:0.3;cursor:default}
+
+.progress-track{position:fixed;top:0;left:0;right:0;height:3px;z-index:20;background:rgba(255,255,255,0.04)}
+.progress-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--vessel-red),var(--accent));transition:width 0.6s cubic-bezier(0.4,0,0.2,1)}
+
+.journal-badge{position:fixed;top:12px;right:16px;z-index:10;text-align:right;pointer-events:none}
+.journal-badge .journal{font-family:'JetBrains Mono',monospace;font-size:0.5rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim)}
+.journal-badge .fig-label{font-size:0.8rem;font-weight:300;font-style:italic;color:var(--text);margin-top:2px}
+@media(max-width:640px){.journal-badge{display:none}}
+
+.morph-panel{position:fixed;z-index:10;background:var(--panel-bg);border:1px solid var(--border);border-radius:4px;padding:12px 16px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);opacity:0;pointer-events:none;transition:opacity 0.4s ease}
+.morph-panel.show{opacity:1;pointer-events:all}
+@media(min-width:641px){.morph-panel{bottom:20px;left:20px;min-width:260px}}
+@media(max-width:640px){.morph-panel{bottom:100px;left:12px;right:12px}}
+.morph-panel h4{font-family:'JetBrains Mono',monospace;font-size:0.55rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.morph-cols{display:flex;gap:16px}
+.morph-col h5{font-family:'JetBrains Mono',monospace;font-size:0.45rem;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-dim);margin-bottom:4px}
+
+.colorbar{position:fixed;z-index:10;background:var(--panel-bg);border:1px solid var(--border);border-radius:4px;padding:10px 14px;backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);opacity:0;pointer-events:none;transition:opacity 0.4s ease}
+.colorbar.show{opacity:1;pointer-events:all}
+@media(min-width:641px){.colorbar{top:50%;right:20px;transform:translateY(-50%)}}
+@media(max-width:640px){.colorbar{top:80px;right:12px}}
+.colorbar h4{font-family:'JetBrains Mono',monospace;font-size:0.5rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.colorbar-gradient{width:16px;height:120px;border-radius:2px}
+.colorbar-labels{display:flex;flex-direction:column;justify-content:space-between;height:120px;margin-left:4px}
+.colorbar-row{display:flex;align-items:flex-start;gap:6px}
+.colorbar-label{font-family:'JetBrains Mono',monospace;font-size:0.42rem;color:var(--text-dim)}
+
+.swipe-hint{position:fixed;bottom:130px;left:50%;transform:translateX(-50%);z-index:15;font-family:'JetBrains Mono',monospace;font-size:0.5rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-dim);opacity:0;animation:hintFade 4s ease 2s forwards;pointer-events:none}
+@keyframes hintFade{0%{opacity:0}20%{opacity:0.7}80%{opacity:0.7}100%{opacity:0}}
+@media(min-width:641px){.swipe-hint{display:none}}
+</style>
+</head>
+<body>
+
+<!-- Transition overlay: covers NiiVue loading text, shows stage name -->
+<div id="transition-overlay">
+  <div style="text-align:center">
+    <div class="stage-num" id="overlay-num">Stage 1 of 5</div>
+    <div class="stage-title" id="overlay-title">Lung Segmentation</div>
+  </div>
+</div>
+
+<div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+
+<div class="header">
+  <h1>Pulmonary Vasculature Pipeline</h1>
+  <div class="subtitle">Step-by-Step 3D Reconstruction &nbsp;·&nbsp; SITEE 2026</div>
+  <div class="accent-line"></div>
+</div>
+
+<div class="journal-badge">
+  <div class="journal">Pipeline Results</div>
+  <div class="fig-label" id="fig-label">Fig. 1 — Lung segmentation</div>
+</div>
+
+<div class="timeline" id="timeline"></div>
+
+<div class="info-panel collapsed" id="info-panel">
+  <button class="info-toggle" id="info-toggle">&#9650; details</button>
+  <h3 id="info-title"></h3>
+  <div class="info-subtitle" id="info-subtitle"></div>
+  <div id="info-stats"></div>
+</div>
+
+
+<div class="colorbar" id="colorbar">
+  <h4 id="colorbar-title">Radius (mm)</h4>
+  <div class="colorbar-row">
+    <div class="colorbar-gradient" id="colorbar-gradient"></div>
+    <div class="colorbar-labels" id="colorbar-labels"></div>
+  </div>
+</div>
+
+<div class="swipe-hint">&#8592; swipe to navigate &#8594;</div>
+
+<div class="controls">
+  <button class="ctrl-btn nav" id="btn-prev" disabled>&#8592;</button>
+  <button class="ctrl-btn" id="btn-autoplay">&#9646;&#9646;</button>
+  <button class="ctrl-btn" id="btn-view">3D</button>
+  <button class="ctrl-btn" id="btn-clip">Clip</button>
+  <button class="ctrl-btn nav" id="btn-next">&#8594;</button>
+</div>
+
+<canvas id="gl1"></canvas>
+<canvas id="graph-canvas"></canvas>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import { Niivue, SLICE_TYPE } from "https://unpkg.com/@niivue/niivue@0.44.0/dist/index.js";
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+window.onerror = (msg) => console.error('Error:', msg);
+window.onunhandledrejection = (e) => console.error('Rejection:', e.reason);
+
+// ═══════════════════════════════════════════
+// RADIUS COLORMAP — jet: blue → cyan → green → yellow → red
+// ═══════════════════════════════════════════
+// Plasma colormap — exact matplotlib/PyVista plasma (256 stops sampled at 16 points)
+// purple-blue → pink → orange → yellow, identical to fig_graph_pyvista.py cmap="plasma"
+const PLASMA = [
+  [0.050383,0.029803,0.527975],[0.213395,0.014279,0.614870],[0.366529,0.007880,0.647367],
+  [0.501574,0.028972,0.629503],[0.616377,0.090790,0.573617],[0.712674,0.162105,0.497513],
+  [0.796692,0.232815,0.416873],[0.872303,0.305354,0.330479],[0.935158,0.384781,0.241927],
+  [0.976444,0.469158,0.148892],[0.994759,0.557899,0.067721],[0.992811,0.649552,0.020714],
+  [0.974443,0.743843,0.028536],[0.942598,0.837566,0.088395],[0.897787,0.926832,0.175394],
+  [0.940015,0.975158,0.131326],
+];
+function plasmaColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const idx = t * (PLASMA.length - 1);
+  const lo = Math.floor(idx), hi = Math.min(lo + 1, PLASMA.length - 1);
+  const f = idx - lo;
+  const a = PLASMA[lo], b = PLASMA[hi];
+  return [a[0]+(b[0]-a[0])*f, a[1]+(b[1]-a[1])*f, a[2]+(b[2]-a[2])*f];
+}
+// Linear normalization on mean_radius — identical to PyVista default scalar mapping
+function radiusToColor(radius, rMin, rMax) {
+  const t = (radius - rMin) / Math.max(rMax - rMin, 0.001);
+  return plasmaColor(Math.max(0, Math.min(1, t)));
+}
+
+// ═══════════════════════════════════════════
+// PIPELINE STAGES
+// ═══════════════════════════════════════════
+const STAGES = [
+  {
+    id: 'lung_mask', title: 'Lung Segmentation',
+    subtitle: 'Eroded lung mask — pleural wall excluded. This Visualisation done with NiiVue.',
+    volumes: [{ url: 's01_lung_mask_eroded.nii.gz', colormap: 'blue', opacity: 1.0, cal_min: 0.5, cal_max: 1 }],
+  },
+  {
+    id: 'frangi', title: 'Vesselness — Frangi',
+    subtitle: 'Vessel probability map calculated with Hessian-Based Frangi algorithm. This Visualisation done with NiiVue.',
+    volumes: [{ url: 's03_map_frangi.nii.gz', colormap: 'hot', opacity: 1.0, cal_min: 0.01, cal_max: 1 }],
+  },
+  {
+    id: 'sato', title: 'Vesselness — Sato',
+    subtitle: 'Vessel probability map calculated with Hessian-Based Sato algorithm. This Visualisation done with NiiVue.',
+    volumes: [{ url: 's03_map_sato.nii.gz', colormap: 'hot', opacity: 1.0, cal_min: 0.05, cal_max: 1 }],
+  },
+  {
+    id: 'fused', title: 'Fused Vesselness',
+    subtitle: 'Frangi + Sato weighted fusion final vessel probability map. This Visualisation done with NiiVue.',
+    volumes: [{ url: 's03_vesselness_fused.nii.gz', colormap: 'hot', opacity: 1.0, cal_min: 0.05, cal_max: 1 }],
+  },
+  {
+    id: 'graph', title: 'Vascular Graph',
+    subtitle: 'Skeletonization done with TEASAR by Kimimaro, resulting graph was constructed using NetworkX. This Visualisation done with Three.js',
+    useThreeJS: true,
+  },
+];
+
+// ═══════════════════════════════════════════
+// GLOBALS
+// ═══════════════════════════════════════════
+let nv;
+let currentIdx = 0;
+let is3D = true;
+let autoPlayOn = true;
+let autoPlayTimer = null;
+const AUTO_PLAY_MS = 5000;
+let morphData = null;
+let isLoading = false;
+
+let autoRotating = true;
+let rotationRAF = null;
+let rotationAngle = 0;
+let defaultElevation = 0;
+let userTouching = false;
+
+let threeRenderer, threeScene, threeCamera, threeControls;
+let graphLoaded = false;
+let graphAnimRAF = null;
+let graphRMin = 0, graphRMax = 1;
+
+const overlay = () => document.getElementById('transition-overlay');
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+async function init() {
+  try {
+    nv = new Niivue({
+      backColor: [0.039, 0.039, 0.059, 1],
+      show3Dcrosshair: false,
+      isColorbar: false,
+      isRadiologicalConvention: false,
+      logging: false,
+      isHighResolutionCapable: true,
+      volScaleMultiplier: 1.0,
+      isAntiAlias: true,
+      isForceMouseClickToVoxelCenters: false,
+      dragMode: 5, // 5 = slicer3D (3D drag to rotate)
+    });
+
+    // await nv.attachToCanvas(document.getElementById('gl1'));
+    // nv.setSliceType(SLICE_TYPE.RENDER);
+    // // Trilinear interpolation — bez tego voxele wyglądają blokowo po przybliżeniu
+    // try { nv.setInterpolation(true); } catch(e) {}
+    // // Resize handler — utrzymuje backbuffer = CSS × devicePixelRatio
+    // function resizeNiiCanvas() {
+    //   const c = document.getElementById('gl1');
+    //   const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    //   const w = Math.round(c.clientWidth * dpr);
+    //   const h = Math.round(c.clientHeight * dpr);
+    //   if (c.width !== w || c.height !== h) {
+    //     c.width = w; c.height = h;
+    //     try { nv.resizeListener(); } catch(e) { try { nv.drawScene(); } catch(e2) {} }
+    //   }
+    // }
+    // resizeNiiCanvas();
+    // window.addEventListener('resize', resizeNiiCanvas);
+
+    await nv.attachToCanvas(document.getElementById('gl1'));
+    nv.setSliceType(SLICE_TYPE.RENDER);
+
+// [NOWE] Włączamy cieniowanie wolumetryczne - nada naczyniom głębię 3D
+    nv.setVolumeRenderIllumination(1.0);
+
+// Trilinear interpolation — przy wysokiej rozdzielczości to ustawienie da nam piękne, gładkie krawędzie
+    try { nv.setInterpolation(true); } catch(e) {}
+
+// Resize handler — utrzymuje backbuffer = CSS × devicePixelRatio
+    function resizeNiiCanvas() {
+      const c = document.getElementById('gl1');
+
+  // [ZMIENIONE] Usunięto limit w postaci "2". Teraz aplikacja wyciągnie 100% z monitora!
+      const dpr = window.devicePixelRatio || 1;
+
+      const w = Math.round(c.clientWidth * dpr);
+      const h = Math.round(c.clientHeight * dpr);
+
+      if (c.width !== w || c.height !== h) {
+        c.width = w; c.height = h;
+        try { nv.resizeListener(); } catch(e) { try { nv.drawScene(); } catch(e2) {} }
+      }
+}
+resizeNiiCanvas();
+window.addEventListener('resize', resizeNiiCanvas);
+
+    try {
+      const r = await fetch('morphometry_summary.json');
+      morphData = await r.json();
+    } catch(e) {}
+
+    buildTimeline();
+    setupControls();
+    setupInteraction();
+
+    // Load first volume
+    showOverlay(0);
+    await nv.loadVolumes(STAGES[0].volumes.map(v => ({
+      url: v.url, colormap: v.colormap, opacity: v.opacity,
+      cal_min: v.cal_min, cal_max: v.cal_max,
+    })));
+
+    // Affine: dim1=S=world-Y=up, det>0. az=20 slight right-anterior view; el=10 slightly above.
+    defaultElevation = 0;
+    rotationAngle = 0;
+    nv.setRenderAzimuthElevation(rotationAngle, defaultElevation);
+
+    updateTimeline(0);
+    updateProgress(0);
+    updateInfoPanel(STAGES[0]);
+    updateFigLabel(0, STAGES[0]);
+
+    // Hide overlay after first load
+    setTimeout(() => overlay().classList.add('transparent'), 300);
+
+    startAutoRotation();
+    updateAutoPlayUI();
+    scheduleAutoAdvance();
+
+  } catch(err) {
+    console.error('Init failed:', err);
+  }
+}
+
+// ═══════════════════════════════════════════
+// OVERLAY — elegant stage title covering NiiVue loading
+// ═══════════════════════════════════════════
+function showOverlay(idx) {
+  const o = overlay();
+  document.getElementById('overlay-num').textContent = 'Stage ' + (idx + 1) + ' of ' + STAGES.length;
+  document.getElementById('overlay-title').textContent = STAGES[idx].title;
+  o.classList.remove('transparent');
+}
+
+function hideOverlay() {
+  overlay().classList.add('transparent');
+}
+
+// ═══════════════════════════════════════════
+// INTERACTION — pause auto-rotation on touch/drag, swipe nav
+// ═══════════════════════════════════════════
+function setupInteraction() {
+  const canvas = document.getElementById('gl1');
+
+  function onGrab() { userTouching = true; stopAutoRotation(); }
+  function onRelease() {
+    userTouching = false;
+    // Read back azimuth but keep our forced elevation
+    rotationAngle = nv.scene.renderAzimuth;
+    setTimeout(() => { if (!userTouching && autoRotating) startAutoRotation(); }, 3000);
+  }
+
+  canvas.addEventListener('mousedown', onGrab);
+  window.addEventListener('mouseup', onRelease);
+  canvas.addEventListener('touchstart', onGrab, { passive: true });
+  canvas.addEventListener('touchend', onRelease, { passive: true });
+
+  // Swipe navigation
+  let sx = 0, sy = 0;
+  canvas.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }
+  }, { passive: true });
+  canvas.addEventListener('touchend', (e) => {
+    const dx = e.changedTouches[0].clientX - sx;
+    const dy = e.changedTouches[0].clientY - sy;
+    if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
+      clearTimeout(autoPlayTimer);
+      if (dx < 0) goToStage(currentIdx + 1);
+      else goToStage(currentIdx - 1);
+    }
+  }, { passive: true });
+}
+
+// ═══════════════════════════════════════════
+// AUTO-ROTATION — only change azimuth, preserve NiiVue's elevation
+// ═══════════════════════════════════════════
+function startAutoRotation() {
+  if (rotationRAF || userTouching) return;
+  if (STAGES[currentIdx].useThreeJS) return;
+
+  function rotate() {
+    if (userTouching) { rotationRAF = null; return; }
+    rotationAngle = (rotationAngle - 0.12 + 360) % 360;
+    nv.setRenderAzimuthElevation(rotationAngle, defaultElevation);
+    rotationRAF = requestAnimationFrame(rotate);
+  }
+  rotationRAF = requestAnimationFrame(rotate);
+}
+
+function stopAutoRotation() {
+  if (rotationRAF) { cancelAnimationFrame(rotationRAF); rotationRAF = null; }
+}
+
+// ═══════════════════════════════════════════
+// THREE.JS — GRAPH
+// ═══════════════════════════════════════════
+function initThreeJS() {
+  if (threeRenderer) return;
+
+  const canvas = document.getElementById('graph-canvas');
+  threeRenderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  threeRenderer.setPixelRatio(window.devicePixelRatio);
+  threeRenderer.setSize(window.innerWidth, window.innerHeight);
+  threeRenderer.setClearColor(0x0a0a0f, 1);
+
+  threeScene = new THREE.Scene();
+  threeCamera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.5, 2000);
+
+  threeControls = new OrbitControls(threeCamera, canvas);
+  threeControls.enableDamping = true;
+  threeControls.dampingFactor = 0.08;
+  threeControls.autoRotate = true;
+  threeControls.autoRotateSpeed = 1.0;
+  threeControls.minDistance = 30;
+  threeControls.maxDistance = 800;
+
+  threeControls.addEventListener('start', () => { threeControls.autoRotate = false; });
+  threeControls.addEventListener('end', () => {
+    setTimeout(() => { threeControls.autoRotate = true; }, 3000);
+  });
+
+  // Lighting
+  threeScene.add(new THREE.AmbientLight(0xffffff, 0.5));
+  const d1 = new THREE.DirectionalLight(0xffffff, 0.8);
+  d1.position.set(100, 200, 150);
+  threeScene.add(d1);
+  const d2 = new THREE.DirectionalLight(0x6688cc, 0.3);
+  d2.position.set(-80, -100, -60);
+  threeScene.add(d2);
+
+  window.addEventListener('resize', () => {
+    threeCamera.aspect = window.innerWidth / window.innerHeight;
+    threeCamera.updateProjectionMatrix();
+    threeRenderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+async function loadGraph() {
+  if (graphLoaded) return;
+  initThreeJS();
+
+  const resp = await fetch('graph.json');
+  const data = await resp.json();
+
+  // Build node lookup
+  const nodeMap = new Map();
+  for (const side of ['left', 'right']) {
+    for (const n of data[side].nodes) nodeMap.set(side + '_' + n.id, n);
+  }
+
+  let sumX = 0, sumY = 0, sumZ = 0, count = 0;
+  for (const [, n] of nodeMap) {
+    sumX += n.pos_mm_x; sumY += n.pos_mm_y; sumZ += n.pos_mm_z; count++;
+  }
+  const cx = sumX / count, cy = sumY / count, cz = sumZ / count;
+
+  const allEdges = [];
+  let rMin = Infinity, rMax = -Infinity;
+  for (const side of ['left', 'right']) {
+    for (const edge of data[side].edges) {
+      const src = nodeMap.get(side + '_' + edge.source);
+      const tgt = nodeMap.get(side + '_' + edge.target);
+      if (!src || !tgt) continue;
+      const r = edge.mean_radius || 1.0;
+      if (r < rMin) rMin = r;
+      if (r > rMax) rMax = r;
+      allEdges.push({ src, tgt, radius: r });
+    }
+  }
+
+  function toThree(n) {
+    return new THREE.Vector3(n.pos_mm_x - cx, n.pos_mm_z - cz, -(n.pos_mm_y - cy));
+  }
+
+  // Create instanced cylinders for all edges
+  const baseCyl = new THREE.CylinderGeometry(1, 1, 1, 16);
+  const material = new THREE.MeshStandardMaterial({
+  roughness: 0.3,  // kontroluje matowość (0 = lustro, 1 = całkowicie matowy)
+  metalness: 0.1   // dodaje delikatny metaliczny połysk
+});
+  const instMesh = new THREE.InstancedMesh(baseCyl, material, allEdges.length);
+
+  const dummy = new THREE.Object3D();
+  const up = new THREE.Vector3(0, 1, 0);
+  const dir = new THREE.Vector3();
+  const color = new THREE.Color();
+
+  for (let i = 0; i < allEdges.length; i++) {
+    const { src, tgt, radius } = allEdges[i];
+    const p0 = toThree(src);
+    const p1 = toThree(tgt);
+
+    dir.subVectors(p1, p0);
+    const length = dir.length();
+    if (length < 0.01) {
+      dummy.scale.set(0, 0, 0);
+      dummy.updateMatrix();
+      instMesh.setMatrixAt(i, dummy.matrix);
+      continue;
+    }
+
+    dir.normalize();
+
+    // Position at midpoint
+    dummy.position.lerpVectors(p0, p1, 0.5);
+
+    // Scale: radius for tube thickness, length for tube length
+    const tubeR = Math.max(radius * 0.35, 0.2);
+    dummy.scale.set(tubeR, length, tubeR);
+
+    // Orient along edge direction
+    dummy.quaternion.setFromUnitVectors(up, dir);
+
+    dummy.updateMatrix();
+    instMesh.setMatrixAt(i, dummy.matrix);
+
+    // Color by radius
+    const c = radiusToColor(radius, rMin, rMax);
+    color.setRGB(c[0], c[1], c[2]);
+    instMesh.setColorAt(i, color);
+  }
+
+  instMesh.instanceMatrix.needsUpdate = true;
+  if (instMesh.instanceColor) instMesh.instanceColor.needsUpdate = true;
+  threeScene.add(instMesh);
+
+  // Camera: position to see the full tree (S-I extent ~234, L-R ~247)
+  threeCamera.position.set(0, 30, 350);
+  threeControls.target.set(0, 0, 0);
+  threeControls.update();
+
+  graphRMin = rMin;
+  graphRMax = rMax;
+  graphLoaded = true;
+  buildColorbar(rMin, rMax);
+}
+
+// HOT colormap — black→red→orange→yellow→white (matches NiiVue 'hot')
+const HOT = [
+  [0,0,0],[0.3,0,0],[0.6,0,0],[0.9,0,0],[1,0.15,0],
+  [1,0.35,0],[1,0.55,0],[1,0.75,0],[1,0.9,0],[1,1,0.2],
+  [1,1,0.5],[1,1,0.75],[1,1,1],
+];
+
+function buildColorbar(rMin, rMax) {
+  // CSS gradient: top=rMax (yellow), bottom=rMin (dark purple) — stops must be ascending %
+  const stops = [...PLASMA].reverse().map((c, i) => {
+    const pct = (i / (PLASMA.length - 1) * 100).toFixed(1);
+    return `rgb(${Math.round(c[0]*255)},${Math.round(c[1]*255)},${Math.round(c[2]*255)}) ${pct}%`;
+  }).join(',');
+  document.getElementById('colorbar-gradient').style.background = `linear-gradient(to bottom, ${stops})`;
+  document.getElementById('colorbar-title').textContent = 'Radius (mm)';
+  const labels = document.getElementById('colorbar-labels');
+  let html = '';
+  for (let i = 0; i <= 4; i++) {
+    const val = rMax - (i / 4) * (rMax - rMin);
+    html += `<span class="colorbar-label">${val.toFixed(1)}</span>`;
+  }
+  labels.innerHTML = html;
+}
+
+function buildGraphColorbar() { buildColorbar(graphRMin, graphRMax); }
+
+function buildVesselnessColorbar(calMin, calMax) {
+  const stops = [...HOT].reverse().map((c, i) => {
+    const pct = (i / (HOT.length - 1) * 100).toFixed(1);
+    return `rgb(${Math.round(c[0]*255)},${Math.round(c[1]*255)},${Math.round(c[2]*255)}) ${pct}%`;
+  }).join(',');
+  document.getElementById('colorbar-gradient').style.background = `linear-gradient(to bottom, ${stops})`;
+  document.getElementById('colorbar-title').textContent = 'Vesselness';
+  const labels = document.getElementById('colorbar-labels');
+  let html = '';
+  for (let i = 0; i <= 4; i++) {
+    const val = calMax - (i / 4) * (calMax - calMin);
+    html += `<span class="colorbar-label">${val.toFixed(2)}</span>`;
+  }
+  labels.innerHTML = html;
+}
+
+function startGraphAnim() {
+  if (graphAnimRAF) return;
+  (function loop() {
+    graphAnimRAF = requestAnimationFrame(loop);
+    threeControls.update();
+    threeRenderer.render(threeScene, threeCamera);
+  })();
+}
+
+function stopGraphAnim() {
+  if (graphAnimRAF) { cancelAnimationFrame(graphAnimRAF); graphAnimRAF = null; }
+}
+
+function showGraph() {
+  document.getElementById('gl1').style.display = 'none';
+  document.getElementById('graph-canvas').style.display = 'block';
+  startGraphAnim();
+}
+
+function hideGraph() {
+  stopGraphAnim();
+  document.getElementById('graph-canvas').style.display = 'none';
+  document.getElementById('gl1').style.display = 'block';
+}
+
+// ═══════════════════════════════════════════
+// STAGE NAVIGATION
+// ═══════════════════════════════════════════
+async function goToStage(idx) {
+  if (idx < 0 || idx >= STAGES.length || isLoading) return;
+  isLoading = true;
+  currentIdx = idx;
+  const stage = STAGES[idx];
+
+  updateTimeline(idx);
+  updateProgress(idx);
+  updateInfoPanel(stage);
+  updateFigLabel(idx, stage);
+
+
+  const cb = document.getElementById('colorbar');
+  const hasVesselness = stage.volumes && stage.volumes[0].colormap === 'hot';
+  if (stage.useThreeJS || hasVesselness) cb.classList.add('show');
+  else cb.classList.remove('show');
+  if (stage.useThreeJS) buildGraphColorbar();
+  else if (hasVesselness) buildVesselnessColorbar(stage.volumes[0].cal_min, stage.volumes[0].cal_max);
+
+  // Show overlay during transition
+  showOverlay(idx);
+
+  try {
+    if (stage.useThreeJS) {
+      stopAutoRotation();
+      hideGraph();
+      await loadGraph();
+      showGraph();
+    } else {
+      hideGraph();
+      await nv.loadVolumes(stage.volumes.map(v => ({
+        url: v.url, colormap: v.colormap, opacity: v.opacity,
+        cal_min: v.cal_min, cal_max: v.cal_max,
+      })));
+      // Re-apply our camera angle (NiiVue resets on loadVolumes)
+      nv.setRenderAzimuthElevation(rotationAngle, defaultElevation);
+      if (autoRotating) startAutoRotation();
+    }
+  } catch(err) {
+    console.error('Load failed:', err);
+  }
+
+  // Fade out overlay
+  setTimeout(hideOverlay, 400);
+
+  isLoading = false;
+  document.getElementById('btn-prev').disabled = (idx === 0);
+  document.getElementById('btn-next').disabled = (idx === STAGES.length - 1);
+
+  if (autoPlayOn) scheduleAutoAdvance();
+}
+
+// ═══════════════════════════════════════════
+// AUTOPLAY
+// ═══════════════════════════════════════════
+function scheduleAutoAdvance() {
+  clearTimeout(autoPlayTimer);
+  if (!autoPlayOn) return;
+  autoPlayTimer = setTimeout(() => {
+    if (!autoPlayOn) return;
+    goToStage((currentIdx + 1) % STAGES.length);
+  }, AUTO_PLAY_MS);
+}
+
+function toggleAutoPlay() {
+  autoPlayOn = !autoPlayOn;
+  autoRotating = autoPlayOn;
+  updateAutoPlayUI();
+  if (autoPlayOn) {
+    if (!STAGES[currentIdx].useThreeJS) startAutoRotation();
+    else if (threeControls) threeControls.autoRotate = true;
+    scheduleAutoAdvance();
+  } else {
+    clearTimeout(autoPlayTimer);
+    stopAutoRotation();
+    if (threeControls) threeControls.autoRotate = false;
+  }
+}
+
+function updateAutoPlayUI() {
+  const btn = document.getElementById('btn-autoplay');
+  btn.innerHTML = autoPlayOn ? '&#9646;&#9646;' : '&#9654;';
+  btn.classList.toggle('active', autoPlayOn);
+}
+
+// ═══════════════════════════════════════════
+// UI HELPERS
+// ═══════════════════════════════════════════
+function buildTimeline() {
+  const el = document.getElementById('timeline');
+  STAGES.forEach((s, i) => {
+    const item = document.createElement('div');
+    item.className = 'timeline-item' + (i === 0 ? ' active' : '');
+    item.innerHTML = `<div class="timeline-dot"></div><div class="timeline-line"></div><span class="timeline-label">${s.title}</span>`;
+    item.addEventListener('click', () => { clearTimeout(autoPlayTimer); goToStage(i); });
+    el.appendChild(item);
+  });
+}
+
+function updateTimeline(idx) {
+  document.querySelectorAll('.timeline-item').forEach((item, i) => {
+    item.classList.toggle('active', i === idx);
+    if (i < idx) item.classList.add('visited');
+  });
+}
+
+function updateProgress(idx) {
+  document.getElementById('progress-fill').style.width = ((idx + 1) / STAGES.length * 100) + '%';
+}
+
+function updateInfoPanel(stage) {
+  document.getElementById('info-title').textContent = stage.title;
+  document.getElementById('info-subtitle').textContent = stage.subtitle;
+  document.getElementById('info-stats').innerHTML = '';
+}
+
+function updateFigLabel(idx, stage) {
+  document.getElementById('fig-label').textContent = 'Fig. ' + (idx + 1) + ' — ' + stage.title;
+}
+
+function showMorphometry(morph) {
+  let html = '';
+  ['LEFT', 'RIGHT'].forEach(side => {
+    const d = morph[side]; if (!d) return;
+    html += `<div class="morph-col"><h5>${side}</h5>`;
+    html += sr('Fractal dim', d.fractal_dimension_volumetric?.toFixed(3));
+    html += sr('Murray \u03b1', d.murray_alpha?.toFixed(2));
+    html += sr('Horton R_B', d.horton_R_B?.toFixed(2));
+    html += sr('Strahler max', d.max_strahler);
+    html += sr('Bifurcations', d.n_bifurcations_total?.toLocaleString());
+    html += sr('Dichotomy', d.dichotomy_index?.toFixed(3));
+    html += sr('Tortuosity', d.tortuosity_mean?.toFixed(3));
+    html += '</div>';
+  });
+  document.getElementById('morph-content').innerHTML = html;
+}
+
+function sr(l, v) {
+  return `<div class="stat-row"><span class="stat-label">${l}</span><span class="stat-value">${v ?? '—'}</span></div>`;
+}
+
+// ═══════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════
+function setupControls() {
+  document.getElementById('btn-prev').addEventListener('click', () => { clearTimeout(autoPlayTimer); goToStage(currentIdx - 1); });
+  document.getElementById('btn-next').addEventListener('click', () => { clearTimeout(autoPlayTimer); goToStage(currentIdx + 1); });
+
+  document.getElementById('btn-view').addEventListener('click', function() {
+    if (STAGES[currentIdx].useThreeJS) return;
+    is3D = !is3D;
+    nv.setSliceType(is3D ? SLICE_TYPE.RENDER : SLICE_TYPE.MULTIPLANAR);
+    this.textContent = is3D ? '3D' : '2D';
+    this.classList.toggle('active', !is3D);
+    if (is3D && autoRotating) startAutoRotation(); else stopAutoRotation();
+  });
+
+  document.getElementById('btn-clip').addEventListener('click', function() {
+    if (STAGES[currentIdx].useThreeJS) return;
+    const c = nv.scene.clipPlane;
+    if (c[0] === 0 && c[1] === 0 && c[2] === 0) nv.setClipPlane([0.3, 0, 120]);
+    else nv.setClipPlane([0, 0, 0]);
+    this.classList.toggle('active');
+  });
+
+  document.getElementById('btn-autoplay').addEventListener('click', toggleAutoPlay);
+
+  document.getElementById('info-toggle').addEventListener('click', function() {
+    const p = document.getElementById('info-panel');
+    p.classList.toggle('collapsed');
+    this.innerHTML = p.classList.contains('collapsed') ? '&#9650; details' : '&#9660; hide';
+  });
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); clearTimeout(autoPlayTimer); goToStage(currentIdx + 1); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); clearTimeout(autoPlayTimer); goToStage(currentIdx - 1); }
+    if (e.key === 'p' || e.key === 'P') toggleAutoPlay();
+  });
+}
+
+init();
+</script>
+</body>
+</html>
