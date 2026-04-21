@@ -409,18 +409,18 @@ function setupInteraction() {
 
   function onGrab() {
     userTouching = true;
-    stopAutoRotation();
+    // Stop only stage auto-advance; rotation continues after release
     if (autoPlayOn) {
       autoPlayOn = false;
-      autoRotating = false;
       clearTimeout(autoPlayTimer);
       updateAutoPlayUI();
     }
   }
   function onRelease() {
     userTouching = false;
-    // Read back azimuth but keep our forced elevation
     rotationAngle = nv.scene.renderAzimuth;
+    // Resume rotation immediately if not explicitly disabled by button
+    if (autoRotating && !STAGES[currentIdx].useThreeJS) startAutoRotation();
   }
 
   canvas.addEventListener('mousedown', onGrab);
@@ -428,16 +428,15 @@ function setupInteraction() {
   canvas.addEventListener('touchstart', onGrab, { passive: true });
   canvas.addEventListener('touchend', onRelease, { passive: true });
 
-  // Swipe navigation
+  // Swipe navigation — on window to avoid NiiVue canvas event interception
   let sx = 0, sy = 0;
-  canvas.addEventListener('touchstart', (e) => {
+  window.addEventListener('touchstart', (e) => {
     if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }
   }, { passive: true });
-  canvas.addEventListener('touchend', (e) => {
+  window.addEventListener('touchend', (e) => {
     const dx = e.changedTouches[0].clientX - sx;
     const dy = e.changedTouches[0].clientY - sy;
     if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
-      clearTimeout(autoPlayTimer);
       if (dx < 0) goToStage(currentIdx + 1);
       else goToStage(currentIdx - 1);
     }
@@ -491,12 +490,13 @@ function initThreeJS() {
     threeControls.autoRotate = false;
     if (autoPlayOn) {
       autoPlayOn = false;
-      autoRotating = false;
       clearTimeout(autoPlayTimer);
       updateAutoPlayUI();
     }
   });
-  threeControls.addEventListener('end', () => {});
+  threeControls.addEventListener('end', () => {
+    if (autoRotating) threeControls.autoRotate = true;
+  });
 
   // Lighting
   threeScene.add(new THREE.AmbientLight(0xffffff, 0.5));
