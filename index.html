@@ -407,7 +407,11 @@ function hideOverlay() {
 function setupInteraction() {
   const canvas = document.getElementById('gl1');
 
-  function onGrab() { userTouching = true; stopAutoRotation(); }
+  function onGrab() {
+    userTouching = true;
+    disableAutoPlay();
+    stopAutoRotation();
+  }
   function onRelease() {
     userTouching = false;
     // Read back azimuth but keep our forced elevation
@@ -419,6 +423,8 @@ function setupInteraction() {
   window.addEventListener('mouseup', onRelease);
   canvas.addEventListener('touchstart', onGrab, { passive: true });
   canvas.addEventListener('touchend', onRelease, { passive: true });
+
+  canvas.addEventListener('wheel', disableAutoPlay, { passive: true });
 
   // Swipe navigation
   let sx = 0, sy = 0;
@@ -479,9 +485,13 @@ function initThreeJS() {
   threeControls.minDistance = 30;
   threeControls.maxDistance = 800;
 
-  threeControls.addEventListener('start', () => { threeControls.autoRotate = false; });
+  threeControls.addEventListener('start', () => {
+    disableAutoPlay();
+    threeControls.autoRotate = false;
+  });
   threeControls.addEventListener('end', () => {
-    setTimeout(() => { threeControls.autoRotate = true; }, 3000);
+      if (autoPlayOn) threeControls.autoRotate = true;
+    }, 3000);
   });
 
   // Lighting
@@ -747,6 +757,18 @@ async function goToStage(idx) {
 // ═══════════════════════════════════════════
 // AUTOPLAY
 // ═══════════════════════════════════════════
+
+function disableAutoPlay() {
+  if (autoPlayOn) {
+    autoPlayOn = false;
+    autoRotating = false;
+    clearTimeout(autoPlayTimer);
+    stopAutoRotation();
+    if (threeControls) threeControls.autoRotate = false;
+    updateAutoPlayUI(); // Automatycznie zmieni ikonkę pauzy na przycisku!
+  }
+}
+
 function scheduleAutoAdvance() {
   clearTimeout(autoPlayTimer);
   if (!autoPlayOn) return;
