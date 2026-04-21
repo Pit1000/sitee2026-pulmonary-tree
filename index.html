@@ -494,9 +494,13 @@ function initThreeJS() {
   threeScene.add(d2);
 
   window.addEventListener('resize', () => {
+
     threeCamera.aspect = window.innerWidth / window.innerHeight;
-    threeCamera.updateProjectionMatrix();
-    threeRenderer.setSize(window.innerWidth, window.innerHeight);
+      if (threeCamera) {
+            threeCamera.aspect = window.innerWidth / window.innerHeight;
+            threeCamera.updateProjectionMatrix();
+            threeRenderer.setSize(window.innerWidth, window.innerHeight);
+      }
   });
 }
 
@@ -590,7 +594,25 @@ async function loadGraph() {
   threeScene.add(instMesh);
 
   // Camera: position to see the full tree (S-I extent ~234, L-R ~247)
-  threeCamera.position.set(0, 30, 350);
+  // Obliczamy optymalną odległość kamery
+  const aspect = window.innerWidth / window.innerHeight;
+
+  // Bazowy dystans dla desktopu (350)
+  let camDist = 350;
+
+  // Jeśli ekran jest wąski (mobile/portrait), zwiększamy dystans
+  // Im mniejszy aspect ratio, tym dalej odsuwamy kamerę
+  if (aspect < 1) {
+    camDist = 350 / aspect; // Proporcjonalne odsunięcie
+
+    // Opcjonalne ograniczenie, żeby nie odjechać za daleko
+    camDist = Math.min(camDist, 800);
+  }
+
+  // Camera: dynamiczna pozycja Z
+  threeCamera.position.set(0, 30, camDist);
+  threeControls.target.set(0, 0, 0);
+  threeControls.update();
   threeControls.target.set(0, 0, 0);
   threeControls.update();
 
