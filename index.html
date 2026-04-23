@@ -172,7 +172,7 @@ body{
   </div>
 </div>
 
-<div class="swipe-hint">&#8592; swipe to navigate &#8594;</div>
+<div class="swipe-hint">&#8592; swipe here to navigate &#8594;</div>
 
 <div class="controls">
   <button class="ctrl-btn nav" id="btn-prev" disabled>&#8592;</button>
@@ -428,18 +428,41 @@ function setupInteraction() {
   canvas.addEventListener('touchstart', onGrab, { passive: true });
   canvas.addEventListener('touchend', onRelease, { passive: true });
 
-  // Swipe navigation — on window to avoid NiiVue canvas event interception
+// Swipe navigation — ograniczone tylko do dolnej "bezpiecznej strefy" ekranu
   let sx = 0, sy = 0;
+  let isValidSwipeStart = false; // Flaga sprawdzająca, gdzie zaczął się dotyk
+
   window.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }
+    if (e.touches.length === 1) {
+      sx = e.touches[0].clientX;
+      sy = e.touches[0].clientY;
+
+      // Definiujemy wysokość strefy swipowania od dołu ekranu (np. dolne 180px)
+      // Obejmuje to panel z detalami i pasek nawigacji
+      const bottomZoneHeight = 180;
+
+      // Sprawdzamy, czy palec wylądował w tej strefie
+      if (sy > window.innerHeight - bottomZoneHeight) {
+        isValidSwipeStart = true;
+      } else {
+        isValidSwipeStart = false;
+      }
+    }
   }, { passive: true });
+
   window.addEventListener('touchend', (e) => {
+    // Jeśli ruch zaczął się na modelu 3D (poza strefą), całkowicie ignorujemy swipe
+    if (!isValidSwipeStart) return;
+
     const dx = e.changedTouches[0].clientX - sx;
     const dy = e.changedTouches[0].clientY - sy;
+
     if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy) * 2) {
       if (dx < 0) goToStage(currentIdx + 1);
       else goToStage(currentIdx - 1);
     }
+
+    isValidSwipeStart = false; // Resetujemy flagę po zakończeniu ruchu
   }, { passive: true });
 }
 
