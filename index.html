@@ -831,7 +831,7 @@ function buildTimeline() {
 function updateTimeline(idx) {
   document.querySelectorAll('.timeline-item').forEach((item, i) => {
     item.classList.toggle('active', i === idx);
-    if (i < idx) item.classList.add('visited');
+    item.classList.toggle('visited', i < idx);
   });
 }
 
